@@ -139,18 +139,57 @@ jobs:
         run: |
           echo "🗑️ Deleting S3 state bucket: ${{ env.TF_STATE_BUCKET }}"
           
-          # Check if bucket exists
-          if aws s3 ls "s3://${{ env.TF_STATE_BUCKET }}" 2>/dev/null; then
-            echo "Emptying bucket contents..."
-            aws s3 rm "s3://${{ env.TF_STATE_BUCKET }}" --recursive
-            
-            echo "Deleting bucket..."
-            aws s3 rb "s3://${{ env.TF_STATE_BUCKET }}"
-            
-            echo "✅ S3 state bucket deleted: ${{ env.TF_STATE_BUCKET }}"
-          else
-            echo "⚠️ Bucket ${{ env.TF_STATE_BUCKET }} not found or already deleted"
-          fi
+          python3 << 'EOF'
+          import boto3
+          import os
+          
+          bucket_name = os.environ['TF_STATE_BUCKET']
+          s3 = boto3.client('s3')
+          
+          try:
+              # Check if bucket exists
+              s3.head_bucket(Bucket=bucket_name)
+              print(f"Bucket {bucket_name} exists, proceeding with deletion...")
+              
+              # Delete all object versions and delete markers
+              paginator = s3.get_paginator('list_object_versions')
+              for page in paginator.paginate(Bucket=bucket_name):
+                  objects_to_delete = []
+                  
+                  # Add all versions
+                  if 'Versions' in page:
+                      for version in page['Versions']:
+                          objects_to_delete.append({
+                              'Key': version['Key'],
+                              'VersionId': version['VersionId']
+                          })
+                  
+                  # Add all delete markers
+                  if 'DeleteMarkers' in page:
+                      for marker in page['DeleteMarkers']:
+                          objects_to_delete.append({
+                              'Key': marker['Key'],
+                              'VersionId': marker['VersionId']
+                          })
+                  
+                  # Delete objects in batches
+                  if objects_to_delete:
+                      s3.delete_objects(
+                          Bucket=bucket_name,
+                          Delete={'Objects': objects_to_delete}
+                      )
+                      print(f"Deleted {len(objects_to_delete)} objects/versions")
+              
+              # Delete the bucket
+              s3.delete_bucket(Bucket=bucket_name)
+              print(f"✅ Successfully deleted bucket: {bucket_name}")
+              
+          except Exception as e:
+              if "NoSuchBucket" in str(e):
+                  print(f"⚠️ Bucket {bucket_name} not found or already deleted")
+              else:
+                  print(f"⚠️ Error deleting bucket: {e}")
+          EOF
 
       - name: Destroy Complete
         run: |
