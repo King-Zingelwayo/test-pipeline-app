@@ -6,11 +6,7 @@ on:
       environment:
         description: 'Target environment to destroy'
         required: true
-        type: choice
-        options:
-          - 'dev'
-          - 'qa'
-          - 'prod'
+        type: string
       aws_region:
         description: 'AWS Region'
         required: true
