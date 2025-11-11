@@ -1,0 +1,151 @@
+name: Terraform Destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment to destroy'
+        required: true
+        type: choice
+        options:
+          - 'dev'
+          - 'qa'
+          - 'prod'
+      aws_region:
+        description: 'AWS Region'
+        required: true
+        type: string
+        default: 'us-east-1'
+      tf_state_bucket:
+        description: 'Terraform State S3 Bucket'
+        required: true
+        type: string
+      role_arn:
+        description: 'AWS Role ARN (overrides default pipeline role)'
+        required: false
+        type: string
+      confirm_destroy:
+        description: 'Type "DESTROY" to confirm'
+        required: true
+        type: string
+
+permissions:
+  id-token: write   # Required for OIDC
+  contents: read
+
+jobs:
+  destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm_destroy == 'DESTROY'
+
+    env:
+      AWS_REGION: ${{ github.event.inputs.aws_region }}
+      TF_STATE_BUCKET: ${{ github.event.inputs.tf_state_bucket }}
+      ENVIRONMENT: ${{ github.event.inputs.environment }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Validate Destroy Confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
+            echo "❌ Destroy confirmation failed. You must type 'DESTROY' exactly."
+            exit 1
+          fi
+          echo "✅ Destroy confirmation validated"
+
+      - name: Set AWS Role
+        id: set-role
+        run: |
+          # Use input role ARN or default pipeline role ARN
+          if [ -n "${{ github.event.inputs.role_arn }}" ]; then
+            ROLE_ARN="${{ github.event.inputs.role_arn }}"
+            echo "Using input role ARN"
+          else
+            ROLE_ARN="${{ secrets.PIPELINE_ROLE_ARN }}"
+            echo "Using pipeline role ARN"
+          fi
+          
+          echo "ROLE_ARN=$ROLE_ARN" >> $GITHUB_ENV
+          echo "Selected ROLE_ARN: $ROLE_ARN"
+          
+          if [ -z "$ROLE_ARN" ] || [ "$ROLE_ARN" = "" ]; then
+            echo "ERROR: No role ARN configured. Please set PIPELINE_ROLE_ARN secret or provide role_arn input."
+            exit 1
+          fi
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.ROLE_ARN }}
+          role-session-name: GitHubActions-Destroy-${{ github.run_id }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Terraform Init (S3 Backend)
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ env.ENVIRONMENT }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -input=false
+
+      - name: Select .tfvars File
+        run: |
+          # Find first .tfvars file
+          TFVARS_FILE=$(find . -name "*.tfvars" -type f | head -1)
+          
+          if [ -n "$TFVARS_FILE" ]; then
+            echo "ENV_FILE=$TFVARS_FILE" >> $GITHUB_ENV
+            echo "Using tfvars file: $TFVARS_FILE"
+          else
+            echo "No .tfvars files found - continuing without variable file"
+          fi
+
+      - name: Terraform Plan Destroy
+        run: |
+          echo "🔍 Planning destruction for environment: ${{ env.ENVIRONMENT }}"
+          if [ -n "${{ env.ENV_FILE }}" ]; then
+            terraform plan -destroy -var-file=${{ env.ENV_FILE }}
+          else
+            terraform plan -destroy
+          fi
+
+      - name: Final Destroy Confirmation
+        run: |
+          echo "⚠️ ========================================== ⚠️"
+          echo "🚨 FINAL WARNING: ABOUT TO DESTROY RESOURCES"
+          echo "⚠️ ========================================== ⚠️"
+          echo "Environment: ${{ env.ENVIRONMENT }}"
+          echo "Region: ${{ env.AWS_REGION }}"
+          echo "State Bucket: ${{ env.TF_STATE_BUCKET }}"
+          echo ""
+          echo "This action will PERMANENTLY DELETE all resources!"
+          echo "Proceeding in 10 seconds..."
+          sleep 10
+
+      - name: Terraform Destroy
+        run: |
+          echo "💥 Executing terraform destroy..."
+          if [ -n "${{ env.ENV_FILE }}" ]; then
+            terraform destroy -auto-approve -var-file=${{ env.ENV_FILE }}
+          else
+            terraform destroy -auto-approve
+          fi
+
+      - name: Destroy Complete
+        run: |
+          echo "✅ ================================"
+          echo "🎯 DESTRUCTION COMPLETED"
+          echo "✅ ================================"
+          echo ""
+          echo "Environment: ${{ env.ENVIRONMENT }}"
+          echo "All Terraform-managed resources have been destroyed."
+          echo ""
+          echo "⚠️ Note: This action cannot be undone!"
