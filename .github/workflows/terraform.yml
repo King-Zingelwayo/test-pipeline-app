@@ -128,9 +128,12 @@ jobs:
           echo "Final environment: $ENV"
 
       - name: Create S3 Bucket
-        if: secrets.TF_STATE_BUCKET != '' && secrets.BACKEND_EXISTS == 'false'
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          BACKEND_EXISTS: ${{ secrets.BACKEND_EXISTS }}
+        if: env.TF_STATE_BUCKET != '' && env.BACKEND_EXISTS == 'false'
         run: |
-          BUCKET_NAME="${{ secrets.TF_STATE_BUCKET }}"
+          BUCKET_NAME="$TF_STATE_BUCKET"
           echo "🪣 Creating S3 bucket: $BUCKET_NAME"
           
           # Check if bucket exists
@@ -401,9 +404,12 @@ jobs:
           echo "Final environment: $ENV"
 
       - name: Create S3 Bucket
-        if: secrets.TF_STATE_BUCKET != '' && secrets.BACKEND_EXISTS == 'false'
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          BACKEND_EXISTS: ${{ secrets.BACKEND_EXISTS }}
+        if: env.TF_STATE_BUCKET != '' && env.BACKEND_EXISTS == 'false'
         run: |
-          BUCKET_NAME="${{ secrets.TF_STATE_BUCKET }}"
+          BUCKET_NAME="$TF_STATE_BUCKET"
           echo "🪣 Creating S3 bucket: $BUCKET_NAME"
           
           # Check if bucket exists
