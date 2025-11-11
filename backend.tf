@@ -1,8 +1,8 @@
 terraform {
   backend "s3" {
-    bucket = var.bucket_name
-    key = "terraform-state/terraform.tfstate"
-    region = var.region
-    use_lockfile = true
+    bucket         = "terraform-state-King-Zingelwayo-test-pipeline-app-57919"
+    key            = "terraform.tfstate"
+    region         = "eu-west-1"
+    use_lockfile   = true
   }
 }
