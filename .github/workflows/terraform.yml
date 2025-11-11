@@ -127,6 +127,31 @@ jobs:
           echo "ENVIRONMENT=$ENV" >> $GITHUB_ENV
           echo "Final environment: $ENV"
 
+      - name: Create S3 Bucket
+        if: secrets.TF_STATE_BUCKET != '' && secrets.BACKEND_EXISTS == 'false'
+        run: |
+          BUCKET_NAME="${{ secrets.TF_STATE_BUCKET }}"
+          echo "🪣 Creating S3 bucket: $BUCKET_NAME"
+          
+          # Check if bucket exists
+          if aws s3 ls "s3://$BUCKET_NAME" 2>/dev/null; then
+            echo "✅ Bucket $BUCKET_NAME already exists"
+          else
+            # Create bucket
+            if [ "${{ env.AWS_REGION }}" = "us-east-1" ]; then
+              aws s3 mb "s3://$BUCKET_NAME"
+            else
+              aws s3 mb "s3://$BUCKET_NAME" --region "${{ env.AWS_REGION }}"
+            fi
+            
+            # Enable versioning
+            aws s3api put-bucket-versioning \
+              --bucket "$BUCKET_NAME" \
+              --versioning-configuration Status=Enabled
+            
+            echo "✅ Created and configured S3 bucket: $BUCKET_NAME"
+          fi
+
       - name: Terraform Init
         run: |
           echo "Using backend configuration from Terraform code"
@@ -374,6 +399,31 @@ jobs:
           
           echo "ENVIRONMENT=$ENV" >> $GITHUB_ENV
           echo "Final environment: $ENV"
+
+      - name: Create S3 Bucket
+        if: secrets.TF_STATE_BUCKET != '' && secrets.BACKEND_EXISTS == 'false'
+        run: |
+          BUCKET_NAME="${{ secrets.TF_STATE_BUCKET }}"
+          echo "🪣 Creating S3 bucket: $BUCKET_NAME"
+          
+          # Check if bucket exists
+          if aws s3 ls "s3://$BUCKET_NAME" 2>/dev/null; then
+            echo "✅ Bucket $BUCKET_NAME already exists"
+          else
+            # Create bucket
+            if [ "${{ env.AWS_REGION }}" = "us-east-1" ]; then
+              aws s3 mb "s3://$BUCKET_NAME"
+            else
+              aws s3 mb "s3://$BUCKET_NAME" --region "${{ env.AWS_REGION }}"
+            fi
+            
+            # Enable versioning
+            aws s3api put-bucket-versioning \
+              --bucket "$BUCKET_NAME" \
+              --versioning-configuration Status=Enabled
+            
+            echo "✅ Created and configured S3 bucket: $BUCKET_NAME"
+          fi
 
       - name: Terraform Init
         run: |
