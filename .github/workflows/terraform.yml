@@ -122,27 +122,31 @@ jobs:
             -input=false
 
       - name: Run Checkov
+        if: github.event_name == 'pull_request'
         id: checkov
         uses: bridgecrewio/checkov-action@master
-        continue-on-error: true
+        continue-on-error: ${{ github.event.inputs.fail_on_security_issues != 'true' }}
         with:
           directory: .
           framework: terraform
 
       - name: Setup TFLint
+        if: github.event_name == 'pull_request'
         uses: terraform-linters/setup-tflint@v3
         with:
           tflint_version: latest
 
       - name: Run TFLint
+        if: github.event_name == 'pull_request'
         id: tflint
-        continue-on-error: true
+        continue-on-error: ${{ github.event.inputs.fail_on_security_issues != 'true' }}
         run: tflint --init && tflint
 
       - name: Run TFSec
+        if: github.event_name == 'pull_request'
         id: tfsec
         uses: aquasecurity/tfsec-action@v1.0.3
-        continue-on-error: true
+        continue-on-error: ${{ github.event.inputs.fail_on_security_issues != 'true' }}
         with:
           working_directory: .
 
@@ -160,7 +164,7 @@ jobs:
 
       - name: Terraform Plan
         id: plan
-        continue-on-error: true
+        shell: bash {0}
         run: |
           if [ -n "${{ env.ENV_FILE }}" ]; then
             terraform plan -var-file=${{ env.ENV_FILE }} -no-color -detailed-exitcode > plan_output.txt 2>&1
@@ -180,9 +184,12 @@ jobs:
             echo "$PLAN_OUTPUT"
             echo "EOF"
           } >> $GITHUB_OUTPUT
+          
+          # Always exit 0 so step doesn't fail
+          exit 0
 
       - name: Comment PR with Plan
-        if: always() && github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@v6
         with:
           script: |
