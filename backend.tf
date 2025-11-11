@@ -1,8 +1,8 @@
 terraform {
   backend "s3" {
-    bucket = "learning-bucket-state"
+    bucket = var.bucket_name
     key = "terraform-state/terraform.tfstate"
-    region = "eu-west-1"
+    region = var.region
     use_lockfile = true
   }
 }
