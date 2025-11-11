@@ -135,6 +135,23 @@ jobs:
             terraform destroy -auto-approve
           fi
 
+      - name: Delete S3 State Bucket
+        run: |
+          echo "🗑️ Deleting S3 state bucket: ${{ env.TF_STATE_BUCKET }}"
+          
+          # Check if bucket exists
+          if aws s3 ls "s3://${{ env.TF_STATE_BUCKET }}" 2>/dev/null; then
+            echo "Emptying bucket contents..."
+            aws s3 rm "s3://${{ env.TF_STATE_BUCKET }}" --recursive
+            
+            echo "Deleting bucket..."
+            aws s3 rb "s3://${{ env.TF_STATE_BUCKET }}"
+            
+            echo "✅ S3 state bucket deleted: ${{ env.TF_STATE_BUCKET }}"
+          else
+            echo "⚠️ Bucket ${{ env.TF_STATE_BUCKET }} not found or already deleted"
+          fi
+
       - name: Destroy Complete
         run: |
           echo "✅ ================================"
@@ -143,5 +160,6 @@ jobs:
           echo ""
           echo "Environment: ${{ env.ENVIRONMENT }}"
           echo "All Terraform-managed resources have been destroyed."
+          echo "S3 state bucket has been deleted."
           echo ""
           echo "⚠️ Note: This action cannot be undone!"
