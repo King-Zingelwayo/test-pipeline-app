@@ -142,9 +142,9 @@ jobs:
           else
             # Create bucket
             if [ "${{ env.AWS_REGION }}" = "us-east-1" ]; then
-              aws s3 mb "s3://$BUCKET_NAME"
+              aws s3 mb "s3://$BUCKET_NAME" || { echo "Failed to create bucket"; exit 1; }
             else
-              aws s3 mb "s3://$BUCKET_NAME" --region "${{ env.AWS_REGION }}"
+              aws s3 mb "s3://$BUCKET_NAME" || { echo "Failed to create bucket"; exit 1; } --region "${{ env.AWS_REGION }}"
             fi
             
             # Enable versioning
@@ -418,9 +418,9 @@ jobs:
           else
             # Create bucket
             if [ "${{ env.AWS_REGION }}" = "us-east-1" ]; then
-              aws s3 mb "s3://$BUCKET_NAME"
+              aws s3 mb "s3://$BUCKET_NAME" || { echo "Failed to create bucket"; exit 1; }
             else
-              aws s3 mb "s3://$BUCKET_NAME" --region "${{ env.AWS_REGION }}"
+              aws s3 mb "s3://$BUCKET_NAME" || { echo "Failed to create bucket"; exit 1; } --region "${{ env.AWS_REGION }}"
             fi
             
             # Enable versioning
