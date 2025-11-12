@@ -127,15 +127,33 @@ jobs:
           sleep 10
 
       - name: Terraform Destroy
+        id: terraform-destroy
         run: |
           echo "💥 Executing terraform destroy..."
+          
+          # Capture terraform destroy output
           if [ -n "${{ env.ENV_FILE }}" ]; then
-            terraform destroy -auto-approve -var-file=${{ env.ENV_FILE }}
+            DESTROY_OUTPUT=$(terraform destroy -auto-approve -var-file=${{ env.ENV_FILE }} 2>&1)
           else
-            terraform destroy -auto-approve
+            DESTROY_OUTPUT=$(terraform destroy -auto-approve 2>&1)
+          fi
+          
+          echo "$DESTROY_OUTPUT"
+          
+          # Check if resources were actually destroyed
+          if echo "$DESTROY_OUTPUT" | grep -q "Destroy complete! Resources: [1-9]"; then
+            echo "SHOULD_DELETE_BUCKET=true" >> $GITHUB_OUTPUT
+            echo "✅ Resources were destroyed - bucket will be deleted"
+          elif echo "$DESTROY_OUTPUT" | grep -q "No changes. No objects need to be destroyed"; then
+            echo "SHOULD_DELETE_BUCKET=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No resources to destroy - bucket will be preserved"
+          else
+            echo "SHOULD_DELETE_BUCKET=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Uncertain destroy status - bucket will be preserved for safety"
           fi
 
       - name: Delete S3 State Bucket
+        if: steps.terraform-destroy.outputs.SHOULD_DELETE_BUCKET == 'true'
         run: |
           echo "🗑️ Deleting S3 state bucket: ${{ env.TF_STATE_BUCKET }}"
           
@@ -184,11 +202,20 @@ jobs:
               s3.delete_bucket(Bucket=bucket_name)
               print(f"✅ Successfully deleted bucket: {bucket_name}")
               
+              # Verify bucket is actually deleted
+              try:
+                  s3.head_bucket(Bucket=bucket_name)
+                  print(f"⚠️ Warning: Bucket {bucket_name} still exists after deletion attempt")
+              except:
+                  print(f"✅ Confirmed: Bucket {bucket_name} has been completely removed")
+              
           except Exception as e:
-              if "NoSuchBucket" in str(e):
+              if "NoSuchBucket" in str(e) or "NotFound" in str(e):
                   print(f"⚠️ Bucket {bucket_name} not found or already deleted")
               else:
                   print(f"⚠️ Error deleting bucket: {e}")
+                  # Don't fail the workflow if bucket deletion fails
+                  pass
           EOF
 
       - name: Destroy Complete
@@ -198,7 +225,12 @@ jobs:
           echo "✅ ================================"
           echo ""
           echo "Environment: ${{ env.ENVIRONMENT }}"
-          echo "All Terraform-managed resources have been destroyed."
-          echo "S3 state bucket has been deleted."
+          if [ "${{ steps.terraform-destroy.outputs.SHOULD_DELETE_BUCKET }}" == "true" ]; then
+            echo "All Terraform-managed resources have been destroyed."
+            echo "S3 state bucket has been deleted."
+          else
+            echo "No resources were destroyed or uncertain status."
+            echo "S3 state bucket has been preserved for safety."
+          fi
           echo ""
           echo "⚠️ Note: This action cannot be undone!"
