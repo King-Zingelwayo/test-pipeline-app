@@ -104,6 +104,28 @@ jobs:
             echo "No .tfvars files found - continuing without variable file"
           fi
 
+      - name: Check Terraform State
+        run: |
+          echo "🔍 Checking Terraform state for environment: ${{ env.ENVIRONMENT }}"
+          echo "State file path: ${{ env.ENVIRONMENT }}/terraform.tfstate"
+          echo "S3 bucket: ${{ env.TF_STATE_BUCKET }}"
+          
+          # Check if state file exists in S3
+          if aws s3 ls "s3://${{ env.TF_STATE_BUCKET }}/${{ env.ENVIRONMENT }}/terraform.tfstate" 2>/dev/null; then
+            echo "✅ State file exists in S3"
+            
+            # Show state file contents
+            echo "State file contents:"
+            terraform state list || echo "No resources in state"
+            
+            # Show state file size
+            aws s3 ls "s3://${{ env.TF_STATE_BUCKET }}/${{ env.ENVIRONMENT }}/terraform.tfstate" --human-readable
+          else
+            echo "⚠️ State file does not exist in S3"
+            echo "Available state files in bucket:"
+            aws s3 ls "s3://${{ env.TF_STATE_BUCKET }}/" --recursive || echo "No files found"
+          fi
+
       - name: Terraform Plan Destroy
         run: |
           echo "🔍 Planning destruction for environment: ${{ env.ENVIRONMENT }}"
@@ -141,12 +163,15 @@ jobs:
           echo "$DESTROY_OUTPUT"
           
           # Check if resources were actually destroyed
-          if echo "$DESTROY_OUTPUT" | grep -q "Destroy complete! Resources: [1-9]"; then
-            echo "SHOULD_DELETE_BUCKET=true" >> $GITHUB_OUTPUT
-            echo "✅ Resources were destroyed - bucket will be deleted"
+          if echo "$DESTROY_OUTPUT" | grep -q "Destroy complete! Resources: 0 destroyed"; then
+            echo "SHOULD_DELETE_BUCKET=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No resources were destroyed (0 destroyed) - bucket will be preserved"
           elif echo "$DESTROY_OUTPUT" | grep -q "No changes. No objects need to be destroyed"; then
             echo "SHOULD_DELETE_BUCKET=false" >> $GITHUB_OUTPUT
             echo "⚠️ No resources to destroy - bucket will be preserved"
+          elif echo "$DESTROY_OUTPUT" | grep -qE "Destroy complete! Resources: [1-9][0-9]* destroyed"; then
+            echo "SHOULD_DELETE_BUCKET=true" >> $GITHUB_OUTPUT
+            echo "✅ Resources were destroyed - bucket will be deleted"
           else
             echo "SHOULD_DELETE_BUCKET=false" >> $GITHUB_OUTPUT
             echo "⚠️ Uncertain destroy status - bucket will be preserved for safety"
